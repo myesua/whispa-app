@@ -17,18 +17,18 @@ app.add_middleware(
 )
 
 # Import routers
-from app.api.transcription import router as transcription_router
-from app.api.summarization import router as summarization_router
-from app.api.screen_capture import router as screen_capture_router
-from app.api.storage import router as storage_router
-from app.api.integrations import router as integrations_router
+from app.routers.transcription import router as transcription_router
+from app.routers.summarization import router as summarization_router
+from app.routers.screen_capture import router as screen_capture_router
+from app.routers.storage import router as storage_router
+from app.routers.integrations import router as integrations_router
 
 # Include routers
-app.include_router(transcription_router, prefix="/api/transcription", tags=["Transcription"])
-app.include_router(summarization_router, prefix="/api/summarization", tags=["Summarization"])
-app.include_router(screen_capture_router, prefix="/api/screen-capture", tags=["Screen Capture"])
-app.include_router(storage_router, prefix="/api/storage", tags=["Storage"])
-app.include_router(integrations_router, prefix="/api/integrations", tags=["Integrations"])
+app.include_router(transcription_router, prefix="/routers/transcription", tags=["Transcription"])
+app.include_router(summarization_router, prefix="/routers/summarization", tags=["Summarization"])
+app.include_router(screen_capture_router, prefix="/routers/screen-capture", tags=["Screen Capture"])
+app.include_router(storage_router, prefix="/routers/storage", tags=["Storage"])
+app.include_router(integrations_router, prefix="/routers/integrations", tags=["Integrations"])
 
 @app.get("/")
 async def root():

@@ -55,7 +55,7 @@ async def create_transcription(
             session_id=request.session_id
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{transcription_id}", response_model=TranscriptionResponse)
 async def get_transcription(transcription_id: str):
@@ -68,12 +68,4 @@ async def get_transcription(transcription_id: str):
             raise HTTPException(status_code=404, detail="Transcription not found")
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving transcription: {str(e)}")
-
-@router.post("/stream")
-async def stream_audio():
-    """
-    Stream audio for real-time transcription (WebSocket implementation)
-    """
-    # This would be implemented with WebSockets for real-time streaming
-    return JSONResponse(content={"message": "Streaming not implemented yet"})
+        raise HTTPException(status_code=500, detail=str(e))

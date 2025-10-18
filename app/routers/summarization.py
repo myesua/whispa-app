@@ -22,12 +22,13 @@ class SummarizationResponse(BaseModel):
 
 @router.post("/", response_model=SummarizationResponse)
 async def create_summary(
-    request: SummarizationRequest,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    request: SummarizationRequest
 ):
     """
-    Generate QA notes from transcription and optional screenshots
+    Create a summary from transcription and optional screenshots
     """
+    # Generate unique ID for this summary
     summary_id = str(uuid.uuid4())
     
     try:
@@ -36,10 +37,10 @@ async def create_summary(
             generate_qa_notes,
             summary_id=summary_id,
             transcription_id=request.transcription_id,
+            session_id=request.session_id,
             screenshot_ids=request.screenshot_ids,
             format=request.format,
-            qa_type=request.qa_type,
-            session_id=request.session_id
+            qa_type=request.qa_type
         )
         
         return SummarizationResponse(
@@ -48,35 +49,16 @@ async def create_summary(
             session_id=request.session_id
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Summarization failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{summary_id}", response_model=SummarizationResponse)
 async def get_summary(summary_id: str):
     """
-    Get the status or result of a summarization
+    Get the status or result of a summary
     """
     try:
-        # This would call a service to retrieve the summary
-        # For now, we'll return a placeholder
-        return SummarizationResponse(
-            summary_id=summary_id,
-            status="completed",
-            content={
-                "title": "Sample QA Notes",
-                "observations": [
-                    {"type": "bug", "description": "Button not responding on click", "severity": "high"},
-                    {"type": "ux", "description": "Navigation flow is confusing", "severity": "medium"}
-                ],
-                "summary": "Several issues were identified during testing..."
-            }
-        )
+        # This would need to be implemented in the service
+        # For now, return a placeholder
+        raise HTTPException(status_code=501, detail="Not implemented yet")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving summary: {str(e)}")
-
-@router.post("/{summary_id}/export")
-async def export_summary(summary_id: str, destination: str = "linear"):
-    """
-    Export a summary to an external system (Linear, Jira, etc.)
-    """
-    # This would integrate with the specified system
-    return {"message": f"Summary {summary_id} exported to {destination}", "status": "success"}
+        raise HTTPException(status_code=500, detail=str(e))

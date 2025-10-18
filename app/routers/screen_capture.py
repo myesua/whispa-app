@@ -22,10 +22,10 @@ class ScreenCaptureRequest(BaseModel):
 class ScreenCaptureResponse(BaseModel):
     capture_id: str
     status: str
+    image_path: Optional[str] = None
     ocr_text: Optional[str] = None
-    image_url: Optional[str] = None
-    thumbnail_url: Optional[str] = None
     session_id: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 @router.post("/", response_model=ScreenCaptureResponse)
 async def create_screen_capture(
@@ -34,7 +34,7 @@ async def create_screen_capture(
     request: ScreenCaptureRequest = None
 ):
     """
-    Process a screen capture image with optional OCR
+    Process a screen capture image
     """
     if not file.filename.endswith(('.png', '.jpg', '.jpeg')):
         raise HTTPException(status_code=400, detail="Unsupported file format")
@@ -61,7 +61,7 @@ async def create_screen_capture(
             session_id=request.session_id
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Screen capture processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{capture_id}", response_model=ScreenCaptureResponse)
 async def get_screen_capture(capture_id: str):
@@ -74,84 +74,43 @@ async def get_screen_capture(capture_id: str):
             raise HTTPException(status_code=404, detail="Screen capture not found")
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving screen capture: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/session/{session_id}", response_model=List[Dict[str, Any]])
+@router.get("/session/{session_id}", response_model=List[ScreenCaptureResponse])
 async def get_session_captures(session_id: str):
     """
-    Get all captures for a session
+    Get all screen captures for a session
     """
     try:
         return get_captures_by_session(session_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving session captures: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/periodic")
+@router.post("/periodic/start")
 async def start_periodic_capture(request: ScreenCaptureRequest):
     """
-    Start periodic screen capture at specified intervals
+    Start periodic screen capture
     """
     if not request.capture_interval or request.capture_interval < 1:
-        raise HTTPException(status_code=400, detail="Valid capture interval required")
-    
-    if not request.session_id:
-        request.session_id = str(uuid.uuid4())
+        raise HTTPException(status_code=400, detail="Invalid capture interval")
     
     try:
-        result = await start_periodic_capture_service(
+        result = start_periodic_capture_service(
             session_id=request.session_id,
-            capture_interval=request.capture_interval,
+            interval=request.capture_interval,
             ocr_enabled=request.ocr_enabled
         )
-        return result
+        return {"status": "started", "session_id": request.session_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to start periodic capture: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/periodic/{session_id}")
+@router.post("/periodic/stop")
 async def stop_periodic_capture(session_id: str):
     """
-    Stop periodic screen capture for a session
+    Stop periodic screen capture
     """
     try:
-        result = await stop_periodic_capture_service(session_id)
-        return result
+        stop_periodic_capture_service(session_id)
+        return {"status": "stopped", "session_id": session_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to stop periodic capture: {str(e)}")
-
-@router.post("/batch", response_model=Dict[str, Any])
-async def process_batch_captures(files: List[UploadFile] = File(...), request: ScreenCaptureRequest = None):
-    """
-    Process multiple screen captures at once
-    """
-    if request is None:
-        request = ScreenCaptureRequest()
-    
-    if not request.session_id:
-        request.session_id = str(uuid.uuid4())
-    
-    try:
-        capture_ids = []
-        background_tasks = BackgroundTasks()
-        
-        for file in files:
-            if not file.filename.endswith(('.png', '.jpg', '.jpeg')):
-                continue
-                
-            capture_id = str(uuid.uuid4())
-            capture_ids.append(capture_id)
-            
-            background_tasks.add_task(
-                process_screen_capture,
-                capture_id=capture_id,
-                file=file,
-                ocr_enabled=request.ocr_enabled,
-                session_id=request.session_id
-            )
-        
-        return {
-            "message": f"Processing {len(capture_ids)} captures",
-            "capture_ids": capture_ids,
-            "session_id": request.session_id
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
