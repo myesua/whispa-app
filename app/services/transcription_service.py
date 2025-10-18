@@ -8,10 +8,8 @@ from fastapi import UploadFile, Depends
 from sqlalchemy.orm import Session
 from datetime import datetime
 import uuid
-import whisper
-import numpy as np
-import torch
 from pathlib import Path
+import google.generativeai as genai
 
 from app.models.database import get_db
 from app.models.transcription import Transcription, TranscriptionSegment
@@ -25,24 +23,21 @@ logger = logging.getLogger(__name__)
 AUDIO_STORAGE_PATH = Path("./storage/audio")
 AUDIO_STORAGE_PATH.mkdir(parents=True, exist_ok=True)
 
-# Load Whisper model (cached for reuse)
-_whisper_model = None
+# Initialize Gemini API
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+else:
+    logger.warning("GEMINI_API_KEY not found in environment variables")
 
-def get_whisper_model(model_size="base"):
-    """
-    Get or initialize the Whisper model
-    """
-    global _whisper_model
-    if _whisper_model is None:
-        logger.info(f"Loading Whisper model: {model_size}")
-        _whisper_model = whisper.load_model(model_size)
-    return _whisper_model
+# Define Gemini model configuration
+GEMINI_MODEL = "gemini-1.5-pro"
 
 async def transcribe_audio(
     transcription_id: str,
     file: UploadFile,
     language: str = "en",
-    model: str = "whisper",
+    model: str = "gemini",
     session_id: Optional[str] = None,
     db: Session = Depends(get_db)
 ) -> None:
@@ -87,8 +82,8 @@ async def transcribe_audio(
         
         logger.info(f"Processing audio file: {file.filename} (ID: {transcription_id})")
         
-        if model == "whisper":
-            await process_with_whisper(db_transcription, audio_path, language, db)
+        if model == "gemini":
+            await process_with_gemini(db_transcription, audio_path, language, db)
         elif model == "web_speech":
             # Web Speech API is browser-based, not available in backend
             db_transcription.status = "error"
@@ -102,6 +97,7 @@ async def transcribe_audio(
                 }
             )
         else:
+            # Unsupported model
             db_transcription.status = "error"
             db_transcription.error = f"Unsupported transcription model: {model}"
             await publish_async(
@@ -136,44 +132,87 @@ async def transcribe_audio(
         # Commit final status
         db.commit()
 
-async def process_with_whisper(
+async def process_with_gemini(
     db_transcription: Transcription, 
     file_path: Path, 
     language: str,
     db: Session
 ) -> None:
     """
-    Process audio using Whisper model
+    Process audio using Gemini model
     """
     try:
-        # Get Whisper model
-        model = get_whisper_model()
+        # Check if Gemini API key is available
+        if not GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY not found in environment variables")
         
-        # Run in a thread pool to avoid blocking
+        # Read audio file as binary
+        with open(file_path, "rb") as f:
+            audio_data = f.read()
+        
+        # Create Gemini model instance
+        model = genai.GenerativeModel(GEMINI_MODEL)
+        
+        # Prepare prompt for audio transcription
+        prompt = f"Please transcribe this audio file. The language is {language}."
+        
+        # Process with Gemini in a non-blocking way
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
+        response = await loop.run_in_executor(
             None,
-            lambda: model.transcribe(
-                str(file_path),
-                language=language if language != "auto" else None,
-                verbose=False
+            lambda: model.generate_content(
+                [
+                    prompt,
+                    {"mime_type": "audio/mp3", "data": audio_data}
+                ]
             )
         )
         
+        # Extract transcription text
+        transcription_text = response.text
+        
+        # Create a simple segmentation (Gemini doesn't provide segments like Whisper)
+        # We'll create segments based on punctuation and length
+        segments = []
+        sentences = []
+        
+        # Simple sentence splitting based on punctuation
+        current_sentence = ""
+        current_start = 0
+        
+        for i, char in enumerate(transcription_text):
+            current_sentence += char
+            if char in ['.', '!', '?', '\n'] and len(current_sentence.strip()) > 0:
+                sentences.append({
+                    "text": current_sentence.strip(),
+                    "start": current_start,
+                    "end": i / len(transcription_text) * 60  # Approximate time in seconds
+                })
+                current_sentence = ""
+                current_start = i / len(transcription_text) * 60
+        
+        # Add any remaining text
+        if current_sentence.strip():
+            sentences.append({
+                "text": current_sentence.strip(),
+                "start": current_start,
+                "end": len(transcription_text) / len(transcription_text) * 60
+            })
+        
         # Update transcription with results
         db_transcription.status = "completed"
-        db_transcription.text = result["text"]
-        db_transcription.segments = result["segments"]
+        db_transcription.text = transcription_text
+        db_transcription.segments = sentences
         db_transcription.completed_at = datetime.now()
         
         # Store segments in separate table
-        for segment in result["segments"]:
+        for segment in sentences:
             db_segment = TranscriptionSegment(
                 transcription_id=db_transcription.transcription_id,
                 start_time=segment["start"],
                 end_time=segment["end"],
                 text=segment["text"],
-                confidence=segment.get("confidence", None)
+                confidence=1.0  # Gemini doesn't provide confidence scores
             )
             db.add(db_segment)
         
@@ -188,15 +227,15 @@ async def process_with_whisper(
             {
                 "transcription_id": db_transcription.transcription_id,
                 "session_id": db_transcription.session_id,
-                "text": result["text"],
-                "segments_count": len(result["segments"])
+                "text": transcription_text,
+                "segments_count": len(sentences)
             }
         )
         
     except Exception as e:
-        logger.error(f"Whisper processing error: {str(e)}")
+        logger.error(f"Gemini processing error: {str(e)}")
         db_transcription.status = "error"
-        db_transcription.error = f"Whisper processing error: {str(e)}"
+        db_transcription.error = f"Gemini processing error: {str(e)}"
         db.commit()
         
         # Publish transcription failed event
@@ -205,7 +244,7 @@ async def process_with_whisper(
             {
                 "transcription_id": db_transcription.transcription_id,
                 "session_id": db_transcription.session_id,
-                "error": f"Whisper processing error: {str(e)}"
+                "error": f"Gemini processing error: {str(e)}"
             }
         )
 

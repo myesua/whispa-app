@@ -11,7 +11,7 @@ router = APIRouter()
 class TranscriptionRequest(BaseModel):
     session_id: Optional[str] = None
     language: Optional[str] = "en"
-    model: str = "whisper"  # Options: "whisper", "web_speech"
+    model: str = "gemini"  # Options: "gemini", "web_speech"
 
 class TranscriptionResponse(BaseModel):
     transcription_id: str
