@@ -15,6 +15,7 @@ from pathlib import Path
 
 from app.models.database import get_db
 from app.models.transcription import Transcription, TranscriptionSegment
+from app.services.event_bus import EventType, publish, publish_async
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -59,6 +60,17 @@ async def transcribe_audio(
     db.add(db_transcription)
     db.commit()
     
+    # Publish transcription started event
+    await publish_async(
+        EventType.TRANSCRIPTION_STARTED,
+        {
+            "transcription_id": transcription_id,
+            "session_id": session_id,
+            "model": model,
+            "language": language
+        }
+    )
+    
     try:
         # Save uploaded file to permanent storage
         audio_filename = f"{transcription_id}{os.path.splitext(file.filename)[1]}"
@@ -81,14 +93,40 @@ async def transcribe_audio(
             # Web Speech API is browser-based, not available in backend
             db_transcription.status = "error"
             db_transcription.error = "Web Speech API not available in backend"
+            await publish_async(
+                EventType.TRANSCRIPTION_FAILED,
+                {
+                    "transcription_id": transcription_id,
+                    "session_id": session_id,
+                    "error": "Web Speech API not available in backend"
+                }
+            )
         else:
             db_transcription.status = "error"
             db_transcription.error = f"Unsupported transcription model: {model}"
+            await publish_async(
+                EventType.TRANSCRIPTION_FAILED,
+                {
+                    "transcription_id": transcription_id,
+                    "session_id": session_id,
+                    "error": f"Unsupported transcription model: {model}"
+                }
+            )
         
     except Exception as e:
         logger.error(f"Transcription error: {str(e)}")
         db_transcription.status = "error"
         db_transcription.error = str(e)
+        
+        # Publish transcription failed event
+        await publish_async(
+            EventType.TRANSCRIPTION_FAILED,
+            {
+                "transcription_id": transcription_id,
+                "session_id": session_id,
+                "error": str(e)
+            }
+        )
     
     finally:
         # Update completion time if not already set
@@ -144,11 +182,32 @@ async def process_with_whisper(
         
         logger.info(f"Transcription completed for ID: {db_transcription.transcription_id}")
         
+        # Publish transcription completed event
+        await publish_async(
+            EventType.TRANSCRIPTION_COMPLETED,
+            {
+                "transcription_id": db_transcription.transcription_id,
+                "session_id": db_transcription.session_id,
+                "text": result["text"],
+                "segments_count": len(result["segments"])
+            }
+        )
+        
     except Exception as e:
         logger.error(f"Whisper processing error: {str(e)}")
         db_transcription.status = "error"
         db_transcription.error = f"Whisper processing error: {str(e)}"
         db.commit()
+        
+        # Publish transcription failed event
+        await publish_async(
+            EventType.TRANSCRIPTION_FAILED,
+            {
+                "transcription_id": db_transcription.transcription_id,
+                "session_id": db_transcription.session_id,
+                "error": f"Whisper processing error: {str(e)}"
+            }
+        )
 
 def get_transcription_status(transcription_id: str, db: Session = Depends(get_db)) -> Optional[Dict[str, Any]]:
     """

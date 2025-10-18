@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.database import get_db
 from app.models.storage import StorageItem
+from app.services.event_bus import EventType, publish
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -90,6 +91,18 @@ class StorageService:
             
             db.add(storage_item)
             db.commit()
+            
+            # Publish content saved event
+            publish(
+                EventType.CONTENT_SAVED,
+                {
+                    "storage_id": storage_id,
+                    "filename": filename,
+                    "format": format,
+                    "content_type": content_type,
+                    "session_id": session_id
+                }
+            )
             
             return storage_item.to_dict()
         
@@ -262,6 +275,16 @@ class StorageService:
             # Delete database record
             db.delete(storage_item)
             db.commit()
+            
+            # Publish content deleted event
+            publish(
+                EventType.CONTENT_DELETED,
+                {
+                    "storage_id": storage_id,
+                    "filename": storage_item.filename,
+                    "session_id": storage_item.session_id
+                }
+            )
             
             return {
                 "message": f"Content {storage_id} deleted successfully",
