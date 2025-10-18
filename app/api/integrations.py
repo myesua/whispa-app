@@ -108,13 +108,11 @@ async def get_ticket_status(ticket_id: str):
     Get the status of a ticket in an external system
     """
     try:
-        # This would call a service to check the ticket status
+        # This would retrieve the ticket status from the appropriate service
         return {
             "ticket_id": ticket_id,
-            "external_id": "LIN-123ABC",
             "status": "open",
-            "assignee": "John Doe",
-            "last_updated": "2025-10-18T14:30:00Z"
+            "updated_at": "2023-06-15T10:30:00Z"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get ticket status: {str(e)}")
