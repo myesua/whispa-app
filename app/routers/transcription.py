@@ -1,10 +1,10 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import uuid
 
-from app.services.transcription_service import transcribe_audio, get_transcription_status
+from app.services.transcription_service import transcribe_audio, get_transcription_status, update_transcription
 
 router = APIRouter()
 
@@ -57,6 +57,10 @@ async def create_transcription(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class TranscriptionEditRequest(BaseModel):
+    text: Optional[str] = None
+    segments: Optional[List[Dict[str, Any]]] = None
+
 @router.get("/{transcription_id}", response_model=TranscriptionResponse)
 async def get_transcription(transcription_id: str):
     """
@@ -67,5 +71,32 @@ async def get_transcription(transcription_id: str):
         if result is None:
             raise HTTPException(status_code=404, detail="Transcription not found")
         return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/{transcription_id}", response_model=TranscriptionResponse)
+async def edit_transcription(
+    transcription_id: str,
+    edit_request: TranscriptionEditRequest
+):
+    """
+    Edit an existing transcription
+    """
+    try:
+        if edit_request.text is None and edit_request.segments is None:
+            raise HTTPException(status_code=400, detail="No edits provided")
+            
+        result = update_transcription(
+            transcription_id=transcription_id,
+            text=edit_request.text,
+            segments=edit_request.segments
+        )
+        
+        if result is None:
+            raise HTTPException(status_code=404, detail="Transcription not found")
+            
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
