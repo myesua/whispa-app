@@ -272,12 +272,15 @@ class ScreenCaptureService:
                 "capture_id": capture.id,
                 "status": capture.status,
                 "session_id": capture.session_id,
-                "created_at": capture.created_at.isoformat()
+                "created_at": capture.created_at.isoformat(),
+                "metadata": {}  # Always include metadata
             }
             
+            # Always include image_url and ocr_text, even if processing
+            result["image_url"] = f"/storage/captures/{capture.filename}" if capture.status != "pending" else None
+            result["ocr_text"] = capture.ocr_text if capture.ocr_text else ""
+            
             if capture.status == "completed":
-                result["ocr_text"] = capture.ocr_text if capture.ocr_enabled else None
-                result["image_url"] = f"/storage/captures/{capture.filename}"
                 result["thumbnail_url"] = f"/storage/thumbnails/thumb_{capture.filename}"
                 result["completed_at"] = capture.completed_at.isoformat() if capture.completed_at else None
             elif capture.status == "failed":

@@ -7,8 +7,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models.database import get_db
-from app.models.integration import Integration
-from app.models.tickets import Ticket
+from app.models.integration import Integration, IntegrationTicket
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -331,7 +330,7 @@ class LinearService:
             )
             
             # Create ticket record in database
-            ticket = Ticket(
+            ticket = IntegrationTicket(
                 id=str(uuid.uuid4()),
                 integration_id=integration.id,
                 integration_type="linear",
@@ -474,7 +473,7 @@ class LinearService:
         
         try:
             # Get ticket from database
-            ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+            ticket = db.query(IntegrationTicket).filter(IntegrationTicket.id == ticket_id).first()
             
             if not ticket:
                 raise ValueError(f"Ticket not found: {ticket_id}")
@@ -708,7 +707,7 @@ class LinearService:
                 status=issue["state"]["name"],
                 metadata={
                     "linear_id": issue["id"],
-                    "created_at": datetime.now().isoformat()
+                    "created_at": datetime.utcnow().isoformat()
                 }
             )
             

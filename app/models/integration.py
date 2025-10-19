@@ -42,9 +42,9 @@ class Integration(Base):
         return result
 
 
-class Ticket(Base):
+class IntegrationTicket(Base):
     """Model for storing tickets created in external systems"""
-    __tablename__ = "tickets"
+    __tablename__ = "integration_tickets"
 
     id = Column(String(36), primary_key=True)
     integration_id = Column(String(36), nullable=False, index=True)
@@ -57,7 +57,7 @@ class Ticket(Base):
     status = Column(String(50), nullable=True)  # open, closed, etc.
     priority = Column(String(50), nullable=True)  # high, medium, low
     assignee = Column(String(255), nullable=True)
-    metadata = Column(JSON, nullable=True)  # Additional metadata
+    ticket_metadata = Column(JSON, nullable=True)  # Additional metadata
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -78,7 +78,7 @@ class Ticket(Base):
             "status": self.status,
             "priority": self.priority,
             "assignee": self.assignee,
-            "metadata": self.metadata,
+            "metadata": self.ticket_metadata,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

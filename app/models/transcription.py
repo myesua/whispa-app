@@ -9,8 +9,8 @@ from app.models.database import Base
 class Transcription(Base):
     __tablename__ = "transcriptions"
     
-    id = Column(Integer, primary_key=True, index=True)
-    transcription_id = Column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    id = Column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()))
+    transcription_id = Column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()))
     session_id = Column(String, index=True, nullable=True)
     status = Column(String, default="processing")  # processing, completed, error
     text = Column(Text, nullable=True)
@@ -21,6 +21,9 @@ class Transcription(Base):
     audio_file_path = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Define relationship with Summary
+    summaries = relationship("Summary", back_populates="transcription")
     
     def to_dict(self):
         return {

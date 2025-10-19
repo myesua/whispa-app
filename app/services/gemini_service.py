@@ -22,7 +22,7 @@ else:
     logger.warning("GEMINI_API_KEY not found in environment variables")
 
 # Define Gemini model configuration
-GEMINI_MODEL = "gemini-1.5-pro"
+GEMINI_MODEL = "gemini-pro-latest"
 
 class GeminiService:
     """Service for interacting with Google's Gemini API for QA note generation"""

@@ -17,15 +17,9 @@ import json
 from dotenv import load_dotenv
 from typing import Optional
 from sqlalchemy.orm import Session
-
-# Import models to ensure proper initialization order
-from app.models import Base, Transcription, Summary, Ticket, ScreenCapture
-from app.models.database import engine, get_db
+from app.models.database import get_db
 from app.models.transcription import Transcription
 from app.services.transcription_service import transcribe_audio
-
-# Create all tables
-Base.metadata.create_all(bind=engine)
 
 # Load environment variables
 load_dotenv()
@@ -37,44 +31,23 @@ if GEMINI_API_KEY:
 else:
     print("WARNING: GEMINI_API_KEY not found in environment variables")
 
-app = FastAPI(
-    title="Whispa API",
-    description="AI-powered QA assistant API for capturing and processing feedback",
-    version="0.1.0"
-)
-
-# Configure CORS for local development
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to specific origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Import routers
-from app.routers.transcription import router as transcription_router
-from app.routers.summarization import router as summarization_router
-from app.routers.screen_capture import router as screen_capture_router
-from app.routers.storage import router as storage_router
-from app.routers.integrations import router as integrations_router
+# Configure storage paths
+STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'storage')
+CAPTURES_DIR = os.path.join(STORAGE_DIR, 'captures')
+AUDIO_DIR = os.path.join(STORAGE_DIR, 'audio')
+NOTES_DIR = os.path.join(STORAGE_DIR, 'notes')
 
-# Include routers
-app.include_router(transcription_router, prefix="/routers/transcription", tags=["Transcription"])
-app.include_router(summarization_router, prefix="/routers/summarization", tags=["Summarization"])
-app.include_router(screen_capture_router, prefix="/routers/screen-capture", tags=["Screen Capture"])
-app.include_router(storage_router, prefix="/routers/storage", tags=["Storage"])
-app.include_router(integrations_router, prefix="/routers/integrations", tags=["Integrations"])
-
-# Define storage directories
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STORAGE_DIR = os.path.join(BASE_DIR, "storage")
-AUDIO_DIR = os.path.join(STORAGE_DIR, "audio")
-NOTES_DIR = os.path.join(STORAGE_DIR, "notes")
-CAPTURES_DIR = os.path.join(STORAGE_DIR, "captures")
-
-# Create directories if they don't exist
-for directory in [AUDIO_DIR, NOTES_DIR, CAPTURES_DIR]:
+# Ensure directories exist
+for directory in [CAPTURES_DIR, AUDIO_DIR, NOTES_DIR]:
     os.makedirs(directory, exist_ok=True)
 
 # Configure Gemini models
@@ -186,6 +159,9 @@ async def generate_ai_notes(image_data, transcription):
 # Define request models
 class OCRRequest(BaseModel):
     image: str
+
+class OCRRequest(BaseModel):
+    image: str
     session_id: Optional[str] = None
 
 class NotesRequest(BaseModel):
@@ -193,16 +169,12 @@ class NotesRequest(BaseModel):
     transcription: str
     imageData: str = None
 
-# API Endpoints
 @app.post("/api/ocr")
-async def process_ocr(request: Request):
+async def process_ocr(request: OCRRequest):
     """Process an image with OCR and Gemini Vision."""
     try:
-        # Get request data
-        request_data = await request.json()
-        
         # Extract image data from base64 string
-        image_data = request_data.get("image")
+        image_data = request.image
         if image_data.startswith('data:image'):
             # Remove the data URL prefix if present
             image_data = image_data.split(',')[1]
@@ -326,14 +298,5 @@ Audio Transcription:
         print(f"Error in generate_notes: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/")
-async def root():
-    return {
-        "message": "Welcome to Whispa API",
-        "version": app.version,
-        "docs_url": "/docs"
-    }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=5000, reload=True)
+if __name__ == '__main__':
+    uvicorn.run(app, host="0.0.0.0", port=5000)
