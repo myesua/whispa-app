@@ -7,7 +7,8 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app.models.database import get_db
-from app.models.integration import Integration, Ticket
+from app.models.integration import Integration
+from app.models.tickets import Ticket
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -49,71 +50,190 @@ class LinearService:
                 db.close()
     
     @staticmethod
-    def save_integration(
-        api_key: str,
-        workspace_id: Optional[str] = None,
-        project_id: Optional[str] = None,
-        additional_config: Optional[Dict[str, Any]] = None
+    def create_qa_ticket(
+        summary_id: str,
+        title: str,
+        description: str,
+        priority: Optional[str] = "medium",
+        labels: Optional[List[str]] = None,
+        assignee: Optional[str] = None,
+        additional_fields: Optional[Dict[str, Any]] = None,
+        db: Session = None
     ) -> Dict[str, Any]:
         """
-        Save Linear integration configuration
+        Create a QA ticket in Linear from summarized notes
         
         Args:
-            api_key: Linear API key
-            workspace_id: Optional workspace ID
-            project_id: Optional project ID
-            additional_config: Optional additional configuration
+            summary_id: ID of the summary to link
+            title: Ticket title
+            description: Ticket description in markdown format
+            priority: Ticket priority (low, medium, high, urgent)
+            labels: List of labels to apply
+            assignee: User ID to assign the ticket to
+            additional_fields: Additional fields to include
+            db: Database session
             
         Returns:
-            Dictionary with integration details
+            Dictionary with ticket details including Linear URL
         """
-        db = next(get_db())
-        
+        close_db = False
+        if db is None:
+            db = next(get_db())
+            close_db = True
+            
         try:
-            # Check if integration exists
-            integration = db.query(Integration).filter(
-                Integration.type == "linear"
-            ).first()
+            # Get Linear integration
+            integration = LinearService.get_integration(db)
+            if not integration:
+                raise ValueError("Linear integration not configured")
             
-            if integration:
-                # Update existing integration
-                integration.api_key = api_key
-                integration.workspace_id = workspace_id
-                integration.project_id = project_id
-                integration.additional_config = additional_config
-                integration.is_active = True
-                integration.updated_at = datetime.utcnow()
-            else:
-                # Create new integration
-                integration = Integration(
-                    id=str(uuid.uuid4()),
-                    type="linear",
-                    api_key=api_key,
-                    workspace_id=workspace_id,
-                    project_id=project_id,
-                    additional_config=additional_config,
-                    is_active=True
-                )
-                db.add(integration)
+            # Map priority to Linear priority values
+            priority_map = {
+                "low": "3",
+                "medium": "2", 
+                "high": "1",
+                "urgent": "0"
+            }
+            linear_priority = priority_map.get(priority.lower(), "2")
             
+            # Prepare GraphQL mutation
+            mutation = """
+            mutation CreateIssue($title: String!, $description: String, $teamId: String!, $priority: Int, $labelIds: [String!]) {
+                issueCreate(input: {
+                    title: $title,
+                    description: $description,
+                    teamId: $teamId,
+                    priority: $priority,
+                    labelIds: $labelIds
+                }) {
+                    success
+                    issue {
+                        id
+                        identifier
+                        title
+                        url
+                        state {
+                            name
+                        }
+                    }
+                }
+            }
+            """
+            
+            # Set variables for the mutation
+            variables = {
+                "title": title,
+                "description": description,
+                "teamId": integration.project_id or integration.workspace_id,
+                "priority": int(linear_priority)
+            }
+            
+            if labels and len(labels) > 0:
+                # In a real implementation, we would need to fetch label IDs first
+                # For now, we'll assume labelIds are provided directly
+                variables["labelIds"] = labels
+                
+            # Make API request to Linear
+            headers = {
+                "Authorization": f"Bearer {integration.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(
+                LINEAR_API_URL,
+                json={"query": mutation, "variables": variables},
+                headers=headers
+            )
+            
+            if response.status_code != 200:
+                raise Exception(f"Linear API error: {response.text}")
+                
+            result = response.json()
+            
+            if "errors" in result:
+                raise Exception(f"Linear GraphQL error: {result['errors']}")
+                
+            issue_data = result.get("data", {}).get("issueCreate", {}).get("issue", {})
+            
+            # Create ticket record in database
+            ticket = Ticket(
+                id=str(uuid.uuid4()),
+                summary_id=summary_id,
+                integration_type="linear",
+                external_id=issue_data.get("identifier"),
+                title=title,
+                url=issue_data.get("url"),
+                status=issue_data.get("state", {}).get("name", "created"),
+                metadata={
+                    "linear_id": issue_data.get("id"),
+                    "created_at": datetime.utcnow().isoformat()
+                }
+            )
+            
+            db.add(ticket)
             db.commit()
             
-            # Verify API key by making a test request
-            is_valid = LinearService._verify_api_key(api_key)
+            return {
+                "ticket_id": ticket.id,
+                "external_id": ticket.external_id,
+                "integration_type": "linear",
+                "url": ticket.url,
+                "status": ticket.status,
+                "metadata": ticket.metadata
+            }
             
-            if not is_valid:
-                integration.is_active = False
-                db.commit()
-                raise ValueError("Invalid Linear API key")
-            
-            return integration.to_dict()
-        
         except Exception as e:
-            logger.error(f"Error saving Linear integration: {str(e)}")
-            db.rollback()
+            logger.error(f"Error creating Linear ticket: {str(e)}")
+            if db and db.is_active:
+                db.rollback()
             raise
         finally:
-            db.close()
+            if close_db and db:
+                db.close()
+            
+    @staticmethod
+    def _verify_api_key(api_key: str) -> bool:
+        """
+        Verify Linear API key by making a test request
+        
+        Args:
+            api_key: Linear API key to verify
+            
+        Returns:
+            True if API key is valid, False otherwise
+        """
+        query = """
+        query {
+            viewer {
+                id
+                name
+            }
+        }
+        """
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.post(
+                LINEAR_API_URL,
+                json={"query": query},
+                headers=headers
+            )
+            
+            if response.status_code != 200:
+                return False
+                
+            result = response.json()
+            
+            if "errors" in result:
+                return False
+                
+            return "data" in result and "viewer" in result["data"]
+        except Exception:
+            return False
     
     @staticmethod
     def _verify_api_key(api_key: str) -> bool:
@@ -447,11 +567,168 @@ class LinearService:
                 "title": issue_data["title"],
                 "description": issue_data["description"],
                 "url": issue_data["url"],
-                "state": issue_data["state"]["name"],
-                "assignee": issue_data["assignee"]["name"] if issue_data["assignee"] else None,
+                "status": issue_data["state"]["name"],
                 "priority": issue_data["priority"],
+                "assignee": issue_data["assignee"]["name"] if issue_data["assignee"] else None,
                 "updated_at": issue_data["updatedAt"]
             }
+        except Exception as e:
+            raise ValueError(f"Error fetching Linear ticket: {str(e)}")
+    
+    @staticmethod
+    def create_qa_ticket(
+        summary_id: str,
+        title: str,
+        description: str,
+        priority: str = None,
+        labels: list = None,
+        assignee: str = None,
+        additional_fields: dict = None,
+        db: Session = None
+    ):
+        """
+        Create a QA ticket in Linear from summarized notes
+        
+        Args:
+            summary_id: ID of the summary to link to the ticket
+            title: Title of the ticket
+            description: Description/content of the ticket
+            priority: Priority level (high, medium, low)
+            labels: List of labels to apply
+            assignee: Email of the assignee
+            additional_fields: Any additional fields to include
+            db: Database session
+            
+        Returns:
+            Dictionary with ticket details
+        """
+        try:
+            # Get active Linear integration
+            integration = LinearService.get_integration(db)
+            if not integration:
+                raise ValueError("No active Linear integration found")
+            
+            api_key = integration.api_key
+            team_id = integration.workspace_id  # In Linear, workspace_id is the team ID
+            
+            # Map priority to Linear priority values (1-4)
+            priority_map = {
+                "urgent": 1,
+                "high": 2,
+                "medium": 3,
+                "low": 4,
+                None: 3  # Default to medium
+            }
+            
+            linear_priority = priority_map.get(priority.lower() if priority else None, 3)
+            
+            # Prepare the GraphQL mutation
+            mutation = """
+            mutation CreateIssue($title: String!, $description: String, $teamId: String!, $priority: Int, $labelIds: [String!], $assigneeId: String) {
+                issueCreate(
+                    input: {
+                        title: $title,
+                        description: $description,
+                        teamId: $teamId,
+                        priority: $priority,
+                        labelIds: $labelIds,
+                        assigneeId: $assigneeId
+                    }
+                ) {
+                    success
+                    issue {
+                        id
+                        identifier
+                        title
+                        url
+                        state {
+                            name
+                        }
+                    }
+                }
+            }
+            """
+            
+            # Prepare variables for the mutation
+            variables = {
+                "title": title,
+                "description": description,
+                "teamId": team_id,
+                "priority": linear_priority
+            }
+            
+            # Add labels if provided
+            if labels and integration.additional_config and "label_ids" in integration.additional_config:
+                label_map = integration.additional_config["label_ids"]
+                label_ids = [label_map.get(label) for label in labels if label in label_map]
+                if label_ids:
+                    variables["labelIds"] = label_ids
+            
+            # Add assignee if provided
+            if assignee and integration.additional_config and "team_members" in integration.additional_config:
+                team_members = integration.additional_config["team_members"]
+                if assignee in team_members:
+                    variables["assigneeId"] = team_members[assignee]
+            
+            # Make the API request
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(
+                LINEAR_API_URL,
+                json={"query": mutation, "variables": variables},
+                headers=headers
+            )
+            
+            if response.status_code != 200:
+                raise ValueError(f"Linear API error: {response.text}")
+            
+            result = response.json()
+            
+            if "errors" in result:
+                raise ValueError(f"Linear API error: {result['errors']}")
+            
+            if not result["data"]["issueCreate"]["success"]:
+                raise ValueError("Failed to create Linear issue")
+            
+            issue = result["data"]["issueCreate"]["issue"]
+            
+            # Create a record in the database
+            from app.models.tickets import Ticket
+            
+            ticket = Ticket(
+                id=str(uuid.uuid4()),
+                summary_id=summary_id,
+                integration_type="linear",
+                external_id=issue["identifier"],
+                title=title,
+                url=issue["url"],
+                status=issue["state"]["name"],
+                metadata={
+                    "linear_id": issue["id"],
+                    "created_at": datetime.now().isoformat()
+                }
+            )
+            
+            db.add(ticket)
+            db.commit()
+            
+            # Return the ticket details
+            return {
+                "ticket_id": ticket.id,
+                "external_id": ticket.external_id,
+                "integration_type": "linear",
+                "url": ticket.url,
+                "status": ticket.status,
+                "metadata": ticket.metadata
+            }
+            
+        except Exception as e:
+            if db:
+                db.rollback()
+            raise ValueError(f"Error creating Linear ticket: {str(e)}")
         
         except Exception as e:
             logger.error(f"Error getting Linear issue: {str(e)}")
