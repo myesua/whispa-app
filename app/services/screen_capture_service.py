@@ -186,7 +186,7 @@ class ScreenCaptureService:
     @staticmethod
     async def _perform_ocr(file_path: Path) -> str:
         """
-        Perform OCR on the image
+        Perform OCR on the image with enhanced preprocessing
         
         Args:
             file_path: Path to the image file
@@ -195,11 +195,26 @@ class ScreenCaptureService:
             Extracted text from the image
         """
         try:
-            # Use pytesseract to extract text
-            return await asyncio.to_thread(
+            # First enhance the image for better OCR results
+            enhanced_image = await ScreenCaptureService._enhance_image_for_ocr(file_path)
+            
+            # Convert numpy array back to PIL Image for pytesseract
+            pil_image = Image.fromarray(enhanced_image)
+            
+            # Use pytesseract with improved configuration
+            ocr_config = '--oem 3 --psm 6'  # Use LSTM OCR Engine with page segmentation mode
+            
+            # Extract text with improved configuration
+            text = await asyncio.to_thread(
                 pytesseract.image_to_string,
-                Image.open(file_path)
+                pil_image,
+                config=ocr_config
             )
+            
+            # Post-process text to clean up results
+            text = text.strip()
+            
+            return text
         except Exception as e:
             logger.error(f"OCR failed: {str(e)}")
             return f"OCR failed: {str(e)}"

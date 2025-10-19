@@ -261,6 +261,79 @@ def get_transcription_status(transcription_id: str, db: Session = Depends(get_db
     
     return db_transcription.to_dict()
 
+def update_transcription(
+    transcription_id: str, 
+    text: str = None,
+    segments: List[Dict[str, Any]] = None,
+    db: Session = Depends(get_db)
+) -> Optional[Dict[str, Any]]:
+    """
+    Update a transcription with edited text and segments
+    
+    Args:
+        transcription_id: ID of the transcription to update
+        text: New transcription text
+        segments: New transcription segments
+        db: Database session
+        
+    Returns:
+        Updated transcription data or None if not found
+    """
+    db_transcription = db.query(Transcription).filter(
+        Transcription.transcription_id == transcription_id
+    ).first()
+    
+    if not db_transcription:
+        return None
+    
+    # Only update if transcription is completed
+    if db_transcription.status != "completed":
+        raise ValueError("Cannot edit transcription that is not completed")
+    
+    # Update text if provided
+    if text is not None:
+        db_transcription.text = text
+    
+    # Update segments if provided
+    if segments is not None:
+        # Delete existing segments
+        db.query(TranscriptionSegment).filter(
+            TranscriptionSegment.transcription_id == transcription_id
+        ).delete()
+        
+        # Add new segments
+        for segment in segments:
+            db_segment = TranscriptionSegment(
+                transcription_id=transcription_id,
+                start_time=segment.get("start", 0),
+                end_time=segment.get("end", 0),
+                text=segment.get("text", ""),
+                confidence=segment.get("confidence", 1.0)
+            )
+            db.add(db_segment)
+        
+        # Update segments in transcription
+        db_transcription.segments = segments
+    
+    # Update modified timestamp
+    db_transcription.updated_at = datetime.now()
+    
+    # Commit changes
+    db.commit()
+    
+    # Publish event for transcription update
+    publish(
+        EventType.TRANSCRIPTION_UPDATED,
+        {
+            "transcription_id": transcription_id,
+            "session_id": db_transcription.session_id,
+            "text": db_transcription.text,
+            "segments_count": len(segments) if segments else len(db_transcription.segments or [])
+        }
+    )
+    
+    return db_transcription.to_dict()
+
 def get_transcriptions_by_session(session_id: str, db: Session = Depends(get_db)) -> List[Dict[str, Any]]:
     """
     Get all transcriptions for a specific session
