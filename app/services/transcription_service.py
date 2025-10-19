@@ -31,7 +31,7 @@ else:
     logger.warning("GEMINI_API_KEY not found in environment variables")
 
 # Define Gemini model configuration
-GEMINI_MODEL = "gemini-1.5-pro"
+GEMINI_MODEL = "gemini-pro-latest"
 
 async def transcribe_audio(
     transcription_id: str,
@@ -154,7 +154,7 @@ async def process_with_gemini(
         model = genai.GenerativeModel(GEMINI_MODEL)
         
         # Prepare prompt for audio transcription
-        prompt = f"Please transcribe this audio file. The language is {language}."
+        prompt = f"Please transcribe this audio file accurately. The language is {language}. Include all spoken words, maintain proper punctuation, and preserve the original meaning. Format the output as plain text without any additional commentary."
         
         # Process with Gemini in a non-blocking way
         loop = asyncio.get_event_loop()
@@ -170,6 +170,9 @@ async def process_with_gemini(
         
         # Extract transcription text
         transcription_text = response.text
+        
+        # Log successful transcription
+        logger.info(f"Successfully transcribed audio file: {file_path.name}")
         
         # Create a simple segmentation (Gemini doesn't provide segments like Whisper)
         # We'll create segments based on punctuation and length

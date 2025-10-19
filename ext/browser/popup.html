@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Whispa</title>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar with controls -->
+    <div class="sidebar">
+      <div class="logo">
+        <img src="icons/icon48.svg" alt="Whispa Logo" class="logo-img">
+        <h1>Whispa</h1>
+      </div>
+      
+      <div class="sidebar-controls">
+        <button id="captureBtn" class="sidebar-btn">
+          <span class="icon">📷</span>
+          <span class="btn-text">Capture</span>
+        </button>
+        
+        <button id="recordBtn" class="sidebar-btn">
+          <span class="icon">🎤</span>
+          <span class="record-text">Record</span>
+        </button>
+        
+        <button id="generateBtn" class="sidebar-btn" disabled>
+          <span class="icon">✨</span>
+          <span class="generate-text">Generate</span>
+        </button>
+      </div>
+      
+      <div class="status-panel">
+        <div id="captureStatus" class="status-item">
+          <span class="label">Screen:</span>
+          <span class="value">Not captured</span>
+        </div>
+        
+        <div id="audioStatus" class="status-item">
+          <span class="label">Audio:</span>
+          <span class="value">Not recorded</span>
+        </div>
+        
+        <div id="ocrStatus" class="status-item">
+          <span class="label">OCR:</span>
+          <span class="value">Not started</span>
+          <div class="progress-container">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+          <span id="progressStatus" class="progress-status"></span>
+        </div>
+      </div>
+      
+      <div class="sidebar-footer">
+        <p>AI-powered note-taking assistant</p>
+      </div>
+    </div>
+    
+    <!-- Main content area -->
+    <div class="main-content">
+      <div class="content-header">
+        <h2>Generated Notes</h2>
+        <div class="actions">
+          <button id="copyBtn" class="action-btn" disabled>
+            <span class="icon">📋</span>
+          </button>
+          <button id="exportBtn" class="action-btn" disabled>
+            <span class="icon">📥</span>
+          </button>
+        </div>
+      </div>
+      
+      <div class="preview-area">
+        <!-- Image preview (initially hidden) -->
+        <div id="imagePreview" class="preview-container hidden">
+          <h3>Screen Capture</h3>
+          <img id="capturedImage" src="" alt="Captured screen">
+        </div>
+        
+        <!-- Notes preview -->
+        <div id="notesPreview" class="notes-container">
+          <div id="notes" class="notes-content">
+            <p class="placeholder">Your generated notes will appear here...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

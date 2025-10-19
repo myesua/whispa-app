@@ -20,7 +20,7 @@ class Ticket(Base):
     title = Column(String, nullable=False)
     url = Column(String, nullable=True)
     status = Column(String, nullable=True)
-    metadata = Column(JSON, nullable=True)
+    ticket_metadata = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -39,7 +39,7 @@ class Ticket(Base):
             "title": self.title,
             "url": self.url,
             "status": self.status,
-            "metadata": self.metadata,
+            "metadata": self.ticket_metadata,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

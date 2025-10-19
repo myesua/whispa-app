@@ -31,7 +31,7 @@ class Summary(Base):
 
     # Relationships
     transcription = relationship("Transcription", back_populates="summaries")
-    tickets = relationship("Ticket", back_populates="summary")
+    tickets = relationship("Ticket", back_populates="summary", foreign_keys="Ticket.summary_id")
 
     def __repr__(self):
         return f"<Summary(id='{self.id}', type='{self.summary_type}', status='{self.status}')>"

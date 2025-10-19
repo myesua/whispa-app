@@ -15,7 +15,7 @@ class StorageItem(Base):
     format = Column(String(20), nullable=False)  # markdown, json
     content_type = Column(String(50), nullable=True)  # notes, summary, etc.
     content_preview = Column(Text, nullable=True)  # First few lines for preview
-    metadata = Column(JSON, nullable=True)  # Additional metadata
+    item_metadata = Column(JSON, nullable=True)  # Additional metadata
     session_id = Column(String(36), nullable=True, index=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -35,5 +35,5 @@ class StorageItem(Base):
             "session_id": self.session_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-            "metadata": self.metadata
+            "metadata": self.item_metadata
         }

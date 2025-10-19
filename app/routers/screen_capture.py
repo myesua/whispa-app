@@ -31,7 +31,7 @@ class ScreenCaptureResponse(BaseModel):
 async def create_screen_capture(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    request: ScreenCaptureRequest = None
+    request: str = None
 ):
     """
     Process a screen capture image
@@ -39,7 +39,17 @@ async def create_screen_capture(
     if not file.filename.endswith(('.png', '.jpg', '.jpeg')):
         raise HTTPException(status_code=400, detail="Unsupported file format")
     
-    if request is None:
+    # Parse the request JSON string if provided
+    if request:
+        import json
+        try:
+            request_data = json.loads(request)
+            request = ScreenCaptureRequest(**request_data)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid JSON in request parameter")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid request format: {str(e)}")
+    else:
         request = ScreenCaptureRequest()
     
     # Generate unique ID for this capture
@@ -47,18 +57,21 @@ async def create_screen_capture(
     
     try:
         # Process in background to avoid blocking
-        background_tasks.add_task(
-            process_screen_capture,
+        result = await process_screen_capture(
             capture_id=capture_id,
             file=file,
             ocr_enabled=request.ocr_enabled,
             session_id=request.session_id
         )
         
+        # Return the result from the service directly
         return ScreenCaptureResponse(
             capture_id=capture_id,
             status="processing",
-            session_id=request.session_id
+            session_id=request.session_id,
+            image_path=f"/storage/captures/{capture_id}{file.filename.split('.')[-1]}",  # Construct image path
+            ocr_text="",    # Will be populated when OCR completes
+            metadata={}     # Empty metadata object instead of null
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -72,7 +85,17 @@ async def get_screen_capture(capture_id: str):
         result = get_capture_status(capture_id)
         if result is None:
             raise HTTPException(status_code=404, detail="Screen capture not found")
-        return result
+            
+        # Convert the result to match ScreenCaptureResponse model
+        response = ScreenCaptureResponse(
+            capture_id=result["capture_id"],
+            status=result["status"],
+            session_id=result["session_id"],
+            image_path=result.get("image_url", None),
+            ocr_text=result.get("ocr_text", ""),
+            metadata=result.get("metadata", {})
+        )
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -97,7 +120,7 @@ async def start_periodic_capture(request: ScreenCaptureRequest):
     try:
         result = start_periodic_capture_service(
             session_id=request.session_id,
-            interval=request.capture_interval,
+            capture_interval=request.capture_interval,
             ocr_enabled=request.ocr_enabled
         )
         return {"status": "started", "session_id": request.session_id}
