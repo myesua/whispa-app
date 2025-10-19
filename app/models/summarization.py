@@ -29,8 +29,9 @@ class Summary(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
-    # Relationship with transcription
+    # Relationships
     transcription = relationship("Transcription", back_populates="summaries")
+    tickets = relationship("Ticket", back_populates="summary")
 
     def __repr__(self):
         return f"<Summary(id='{self.id}', type='{self.summary_type}', status='{self.status}')>"
