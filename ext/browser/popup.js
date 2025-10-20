@@ -1,5 +1,5 @@
 // Popup script for Whispa extension
-
+const API_BASE_URL = 'http://localhost:5000';
 document.addEventListener('DOMContentLoaded', function () {
   // DOM elements
   const captureBtn = document.getElementById('captureBtn');
@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const generateBtn = document.getElementById('generateBtn');
   const copyBtn = document.getElementById('copyBtn');
   const exportBtn = document.getElementById('exportBtn');
+  const linearBtn = document.getElementById('linearBtn');
 
   const captureStatus = document
     .getElementById('captureStatus')
@@ -22,6 +23,16 @@ document.addEventListener('DOMContentLoaded', function () {
   const notesPreview = document.getElementById('notesPreview');
   const notesContent = document.getElementById('notes');
 
+  // Settings Modal Elements
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsModal = document.getElementById('settingsModal');
+  const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
+  const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+  const linearApiKey = document.getElementById('linearApiKey');
+  const linearTeamId = document.getElementById('linearTeamId');
+  const linearLabel = document.getElementById('linearLabel');
+  const geminiApiKey = document.getElementById('geminiApiKey');
+
   // State variables
   let isRecording = false;
   let mediaRecorder = null;
@@ -29,11 +40,19 @@ document.addEventListener('DOMContentLoaded', function () {
   let captureData = null;
   let audioData = null;
   let whispaEnabled = true;
+  let settings = {};
 
   // Initialize extension state
-  chrome.storage.local.get(['whispaEnabled'], function (result) {
+  chrome.storage.local.get(['whispaEnabled', 'settings'], function (result) {
     // Default to enabled if not set
     whispaEnabled = result.whispaEnabled !== false;
+    if (result.settings) {
+      settings = result.settings;
+      linearApiKey.value = settings.linearApiKey || '';
+      linearTeamId.value = settings.linearTeamId || '';
+      linearLabel.value = settings.linearLabel || '';
+      geminiApiKey.value = settings.geminiApiKey || '';
+    }
     updateUIState();
   });
 
@@ -213,9 +232,10 @@ document.addEventListener('DOMContentLoaded', function () {
             notesContent.textContent = result.lastNotes.content;
             notesPreview.classList.remove('hidden');
 
-            // Enable copy and export buttons
+            // Enable copy, export, and Linear buttons
             copyBtn.disabled = false;
             exportBtn.disabled = false;
+            linearBtn.disabled = false;
           }
         });
 
@@ -332,11 +352,181 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
+  // Linear integration functionality
+  const linearModal = document.getElementById('linearModal');
+  const ticketTitle = document.getElementById('ticketTitle');
+  const ticketDescription = document.getElementById('ticketDescription');
+  const ticketPriority = document.getElementById('ticketPriority');
+  const cancelLinearBtn = document.getElementById('cancelLinearBtn');
+  const submitLinearBtn = document.getElementById('submitLinearBtn');
+  const linearSuccess = document.getElementById('linearSuccess');
+
+  // Open Linear modal when Linear button is clicked
+  linearBtn.addEventListener('click', () => {
+    // Pre-fill the form with the generated notes
+    const notesText = notesContent.textContent;
+    if (notesText && notesText !== 'Your generated notes will appear here...') {
+      // Extract a title from the first line or first 50 characters
+      const firstLine = notesText.split('\n')[0];
+      ticketTitle.value =
+        firstLine.length > 50 ? firstLine.substring(0, 50) + '...' : firstLine;
+
+      // Use the full notes as description
+      ticketDescription.value = notesText;
+
+      // Show the modal
+      linearModal.classList.remove('hidden');
+    }
+  });
+
+  // Close Linear modal when Cancel button is clicked
+  cancelLinearBtn.addEventListener('click', () => {
+    linearModal.classList.add('hidden');
+    linearSuccess.classList.add('hidden');
+  });
+
+  // Submit Linear ticket when Submit button is clicked
+  submitLinearBtn.addEventListener('click', async () => {
+    if (!ticketTitle.value.trim()) {
+      alert('Please enter a ticket title');
+      return;
+    }
+
+    try {
+      submitLinearBtn.disabled = true;
+      submitLinearBtn.textContent = 'Creating...';
+
+      // Get the last generated notes ID from storage
+      chrome.storage.local.get(['lastNotes'], async function (result) {
+        if (!result.lastNotes) {
+          submitLinearBtn.disabled = false;
+          submitLinearBtn.textContent = 'Create Ticket';
+          showError('No notes found. Please generate notes first.');
+          return;
+        }
+
+        // Use timestamp as ID if id is not available and ensure it's a string
+        const summaryId = String(
+          result.lastNotes.id || result.lastNotes.timestamp || Date.now()
+        );
+
+        // Send request to create Linear ticket
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/routers/integrations/ticket`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                summary_id: summaryId,
+                integration_type: 'linear',
+                title: ticketTitle.value,
+                description: ticketDescription.value,
+                priority: ticketPriority.value,
+                labels: ['30d98260-9069-4a76-bee7-e3c377e4a256'],
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            const errorMessage =
+              errorData.detail ||
+              `Failed to create ticket: ${response.status} ${response.statusText}`;
+
+            // Special handling for "No active Linear integration" error
+            if (errorMessage.includes('No active Linear integration found')) {
+              throw new Error(
+                'No Linear integration configured. Please contact your administrator to set up Linear integration.'
+              );
+            }
+
+            throw new Error(errorMessage);
+          }
+
+          const data = await response.json();
+
+          // Show success message
+          linearSuccess.classList.remove('hidden');
+
+          // Reset form after 2 seconds and close modal
+          setTimeout(() => {
+            linearModal.classList.add('hidden');
+            linearSuccess.classList.add('hidden');
+            ticketTitle.value = '';
+            ticketDescription.value = '';
+            ticketPriority.value = 'medium';
+            submitLinearBtn.disabled = false;
+            submitLinearBtn.textContent = 'Create Ticket';
+          }, 2000);
+        } catch (error) {
+          console.error('Error creating ticket:', error);
+          showError(
+            error.message || 'Failed to create ticket. Please try again.'
+          );
+          submitLinearBtn.disabled = false;
+          submitLinearBtn.textContent = 'Create Ticket';
+        }
+      });
+    } catch (error) {
+      console.error('Error creating Linear ticket:', error);
+      alert(`Failed to create Linear ticket: ${error.message}`);
+      submitLinearBtn.disabled = false;
+      submitLinearBtn.textContent = 'Create Ticket';
+    }
+  });
+
+  // Helper function to show toast notifications
+  function showToast(message, duration = 3000) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+      toast.remove();
+    }, duration);
+  }
+
+  // Settings Modal Functionality
+  settingsBtn.addEventListener('click', () => {
+    settingsModal.classList.remove('hidden');
+  });
+
+  cancelSettingsBtn.addEventListener('click', () => {
+    settingsModal.classList.add('hidden');
+  });
+
+  saveSettingsBtn.addEventListener('click', () => {
+    settings = {
+      linearApiKey: linearApiKey.value,
+      linearTeamId: linearTeamId.value,
+      linearLabel: linearLabel.value,
+      geminiApiKey: geminiApiKey.value,
+    };
+    chrome.storage.local.set({ settings }, () => {
+      showToast('Settings saved successfully!');
+      settingsModal.classList.add('hidden');
+      updateUIState();
+    });
+  });
+
   // Helper function to update UI based on extension state
   function updateUIState() {
     captureBtn.disabled = !whispaEnabled;
     recordBtn.disabled = !whispaEnabled;
     generateBtn.disabled = !whispaEnabled || !captureData || !audioData;
+
+    // Disable export and linear buttons if Linear API key is not set
+    if (settings.linearApiKey && settings.linearTeamId) {
+      exportBtn.disabled = false;
+      linearBtn.disabled = false;
+    } else {
+      exportBtn.disabled = true;
+      linearBtn.disabled = true;
+    }
   }
 
   // Check for saved collapsed state

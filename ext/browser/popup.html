@@ -1,93 +1,194 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Whispa</title>
-  <meta charset="utf-8">
-  <link rel="stylesheet" href="popup.css">
-</head>
-<body>
-  <div class="app-container">
-    <!-- Sidebar with controls -->
-    <div class="sidebar">
-      <div class="logo">
-        <img src="icons/icon48.svg" alt="Whispa Logo" class="logo-img">
-        <h1>Whispa</h1>
-      </div>
-      
-      <div class="sidebar-controls">
-        <button id="captureBtn" class="sidebar-btn">
-          <span class="icon">📷</span>
-          <span class="btn-text">Capture</span>
-        </button>
-        
-        <button id="recordBtn" class="sidebar-btn">
-          <span class="icon">🎤</span>
-          <span class="record-text">Record</span>
-        </button>
-        
-        <button id="generateBtn" class="sidebar-btn" disabled>
-          <span class="icon">✨</span>
-          <span class="generate-text">Generate</span>
-        </button>
-      </div>
-      
-      <div class="status-panel">
-        <div id="captureStatus" class="status-item">
-          <span class="label">Screen:</span>
-          <span class="value">Not captured</span>
+  <head>
+    <title>Whispa</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- Sidebar with controls -->
+      <div class="sidebar">
+        <div class="logo">
+          <img src="icons/logo.png" alt="Whispa Logo" class="logo-img" />
+          <div class="logo-text">AI-powered note-taking assistant</div>
         </div>
-        
-        <div id="audioStatus" class="status-item">
-          <span class="label">Audio:</span>
-          <span class="value">Not recorded</span>
-        </div>
-        
-        <div id="ocrStatus" class="status-item">
-          <span class="label">OCR:</span>
-          <span class="value">Not started</span>
-          <div class="progress-container">
-            <div id="progressBar" class="progress-bar"></div>
-          </div>
-          <span id="progressStatus" class="progress-status"></span>
-        </div>
-      </div>
-      
-      <div class="sidebar-footer">
-        <p>AI-powered note-taking assistant</p>
-      </div>
-    </div>
-    
-    <!-- Main content area -->
-    <div class="main-content">
-      <div class="content-header">
-        <h2>Generated Notes</h2>
-        <div class="actions">
-          <button id="copyBtn" class="action-btn" disabled>
-            <span class="icon">📋</span>
+
+        <div class="sidebar-controls">
+          <button id="captureBtn" class="sidebar-btn">
+            <span class="icon">📷</span>
+            <span class="btn-text">Capture</span>
           </button>
-          <button id="exportBtn" class="action-btn" disabled>
-            <span class="icon">📥</span>
+
+          <button id="recordBtn" class="sidebar-btn">
+            <span class="icon">🎤</span>
+            <span class="record-text">Record</span>
+          </button>
+
+          <button id="generateBtn" class="sidebar-btn" disabled>
+            <span class="icon">✨</span>
+            <span class="generate-text">Generate</span>
           </button>
         </div>
-      </div>
-      
-      <div class="preview-area">
-        <!-- Image preview (initially hidden) -->
-        <div id="imagePreview" class="preview-container hidden">
-          <h3>Screen Capture</h3>
-          <img id="capturedImage" src="" alt="Captured screen">
+
+        <div class="status-panel">
+          <div id="captureStatus" class="status-item">
+            <span class="label">Screen:</span>
+            <span class="value">Not captured</span>
+          </div>
+
+          <div id="audioStatus" class="status-item">
+            <span class="label">Audio:</span>
+            <span class="value">Not recorded</span>
+          </div>
+
+          <div id="ocrStatus" class="status-item">
+            <span class="label">OCR:</span>
+            <span class="value">Not started</span>
+            <div class="progress-container">
+              <div id="progressBar" class="progress-bar"></div>
+            </div>
+            <span id="progressStatus" class="progress-status"></span>
+          </div>
         </div>
-        
-        <!-- Notes preview -->
-        <div id="notesPreview" class="notes-container">
-          <div id="notes" class="notes-content">
-            <p class="placeholder">Your generated notes will appear here...</p>
+
+        <!-- <div class="sidebar-footer">
+          <div>AI-powered note-taking assistant</div>
+        </div> -->
+      </div>
+
+      <!-- Main content area -->
+      <div class="main-content">
+        <div class="content-header">
+          <h2>Generated Notes</h2>
+          <div class="actions">
+            <button id="copyBtn" class="action-btn" disabled title="Copy note">
+              <img src="icons/copy.svg" width="16" height="16" alt="Copy" />
+            </button>
+            <button
+              id="exportBtn"
+              class="action-btn"
+              disabled
+              title="Export notes"
+            >
+              <img
+                src="icons/download.svg"
+                width="16"
+                height="16"
+                alt="Export"
+              />
+            </button>
+            <button
+              id="linearBtn"
+              class="action-btn"
+              disabled
+              title="Send to Linear"
+            >
+              <img src="icons/box.svg" width="16" height="16" alt="Box" />
+            </button>
+          </div>
+          <div>
+            <button id="settingsBtn" class="settings-btn" title="Settings">
+              <img
+                src="icons/settings.svg"
+                width="16"
+                height="16"
+                alt="Settings"
+              />
+            </button>
+          </div>
+        </div>
+
+        <div class="preview-area">
+          <!-- Image preview (initially hidden) -->
+          <div id="imagePreview" class="preview-container hidden">
+            <h3>Screen Capture</h3>
+            <img id="capturedImage" src="" alt="Captured screen" />
+          </div>
+
+          <!-- Notes preview -->
+          <div id="notesPreview" class="notes-container">
+            <div id="notes" class="notes-content">
+              <p class="placeholder">
+                Your generated notes will appear here...
+              </p>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-  
-  <script src="popup.js"></script>
-</body>
+
+    <!-- Linear Modal -->
+    <div id="linearModal" class="linear-modal hidden">
+      <div class="linear-form">
+        <h3>Create Linear Ticket</h3>
+        <div id="linearSuccess" class="linear-success hidden">
+          Ticket created successfully!
+        </div>
+        <div class="form-group">
+          <label for="ticketTitle">Title</label>
+          <input
+            type="text"
+            id="ticketTitle"
+            placeholder="Enter ticket title"
+          />
+        </div>
+        <div class="form-group">
+          <label for="ticketDescription">Description</label>
+          <textarea
+            id="ticketDescription"
+            placeholder="Enter ticket description"
+          ></textarea>
+        </div>
+        <div class="form-group">
+          <label for="ticketPriority">Priority</label>
+          <select id="ticketPriority">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button id="cancelLinearBtn" class="btn">Cancel</button>
+          <button id="submitLinearBtn" class="btn primary">
+            Create Ticket
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="settings-modal hidden">
+      <div class="settings-modal-content">
+        <h2>Settings</h2>
+        <div class="form-group-container">
+          <div class="form-group">
+            <label for="linearApiKey">Linear API Key</label>
+            <input type="password" id="linearApiKey" name="linearApiKey" />
+          </div>
+          <div class="form-group">
+            <label for="linearTeamId">Linear Team ID</label>
+            <input type="text" id="linearTeamId" name="linearTeamId" />
+          </div>
+          <div class="form-group">
+            <label for="linearLabel">Linear Label</label>
+            <input type="text" id="linearLabel" name="linearLabel" />
+          </div>
+          <div class="form-group">
+            <label for="geminiApiKey">Gemini API Key</label>
+            <input type="password" id="geminiApiKey" name="geminiApiKey" />
+          </div>
+        </div>
+        <div class="settings-modal-actions">
+          <button id="cancelSettingsBtn" class="btn btn-secondary">
+            Cancel
+          </button>
+          <button id="saveSettingsBtn" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </body>
 </html>
+
+<script src="popup.js"></script>
